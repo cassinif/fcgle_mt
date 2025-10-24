@@ -1,0 +1,80 @@
+clear all
+close all
+
+% Example 2D number 2: NOSRC with STRANG using the proposed technique
+%                      or SIL + PCG + tau precond
+% Fixed space DOF, increasing number of steps
+
+d = 2;
+
+n = 800*ones(1,d);
+
+alpha = [1.2,1.8];
+
+mrange = 5:5:25;
+
+m_k = 10;
+
+a = -10*ones(1,d);
+b = -a;
+
+nu = 1;
+eta = 1;
+gamma_par = 1;
+kappa = 1;
+zeta = 1;
+T = 1;
+
+coeff_lin = nu+1i*eta;
+coeff_nonlin = kappa+1i*zeta;
+
+for mu = 1:d
+  x{mu} = linspace(a(mu),b(mu),n(mu)+2).';
+  x{mu} = x{mu}(2:n(mu)+1);
+  h(mu) = (b(mu)-a(mu))/(n(mu)+1);
+  ii = (1:n(mu)-2)';
+  gg = -1/h(mu)^alpha(mu)*gamma(alpha(mu)+1)./...
+        [gamma(alpha(mu)/2+1)^2;-gamma(alpha(mu)/2)*gamma(alpha(mu)/2+2);...
+        (-1).^(2:n(mu)-1)'*gamma(alpha(mu)/2)*gamma(alpha(mu)/2+2).*...
+        cumprod((alpha(mu)/2+1+ii)./(alpha(mu)/2-ii))];
+  D{mu} = toeplitz(gg);
+end
+[X{1:d}] = ndgrid(x{:});
+
+U0 = sech(X{1}).*exp(1i*X{1});
+for mu = 2:d
+  U0 = U0.*sech(X{mu}).*exp(1i*X{mu});
+end
+
+nstepsref = 200;
+disp('Computing reference solution...')
+Uref = strangm(D,coeff_lin,gamma_par,kappa,zeta,U0,nstepsref,T/nstepsref);
+disp('Reference solution computed!')
+
+
+counter = 0;
+for nsteps = mrange
+  nsteps
+  counter = counter + 1;
+  tau = T/nsteps;
+
+  disp('STRANG M')
+  [Usm, cpu_sm(counter)] = strangm(D,coeff_lin,gamma_par,kappa,zeta,U0,nsteps,tau);
+  err_sm(counter) = sqrt(prod(h)*sum(abs(Usm(:)-Uref(:)).^2));
+
+  xi = tau/10;
+  disp('STRANG V')
+  [Usv, cpu_sv(counter)] = strangv(D,coeff_lin,gamma_par,kappa,zeta,U0,nsteps,tau,m_k,xi);
+  err_sv(counter) = sqrt(prod(h)*sum(abs(Usv(:)-Uref(:)).^2));
+
+end
+
+figure;
+loglog(err_sv,cpu_sv,'-or')
+hold on
+loglog(err_sm,cpu_sm,'-+b')
+legend('STRANG V','STRANG M')
+xlabel('Error')
+ylabel('Wall-clock time')
+title('Work-precision diagram')
+drawnow
